@@ -1,0 +1,53 @@
+{
+    "author": {
+        "email": "tomaschochola@tomaschochola.cz",
+        "name": "Tomáš Chochola",
+        "url": "https://github.com/tomaschochola"
+    },
+    "bugs": {
+        "email": "tomaschochola@tomaschochola.cz",
+        "url": "https://github.com/tomaschochola/template-rust-project/issues"
+    },
+    "contributors": [
+        {
+            "email": "tomaschochola@tomaschochola.cz",
+            "name": "Tomáš Chochola",
+            "url": "https://github.com/tomaschochola"
+        }
+    ],
+    "description": "Production-oriented Rust project template for AMD64 and ARM64 GNU/Linux and macOS development.",
+    "devDependencies": {
+        "@tomaschochola/tooling-prettier": "github:tomaschochola/tooling-prettier#main",
+        "@tomaschochola/tooling-trimmer": "github:tomaschochola/tooling-trimmer#main"
+    },
+    "funding": {
+        "type": "github",
+        "url": "https://github.com/sponsors/tomaschochola"
+    },
+    "homepage": "https://github.com/tomaschochola/template-rust-project",
+    "keywords": [
+        "tomaschochola",
+        "TomasChochola",
+        "Tomas Chochola",
+        "Tomáš Chochola",
+        "amd64",
+        "apple-silicon",
+        "arm64",
+        "darwin",
+        "gnu-linux",
+        "linux",
+        "macos",
+        "rust",
+        "template-rust-project",
+        "x86-64"
+    ],
+    "license": "CC-BY-ND-4.0",
+    "name": "@tomaschochola/template-rust-project",
+    "private": true,
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/tomaschochola/template-rust-project.git"
+    },
+    "type": "module",
+    "version": "0.0.0"
+}

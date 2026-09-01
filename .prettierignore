@@ -1,0 +1,10 @@
+# rust
+/Cargo.lock
+/Cargo.toml
+/rust-toolchain.toml
+/rustfmt.toml
+
+**/*.rs
+
+# node
+/package-lock.json

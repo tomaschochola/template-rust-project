@@ -1,0 +1,23 @@
+{
+    "appPort": ["61110:61110", "127.0.0.1:61111-61112:61111-61112", "61113:61113", "127.0.0.1:61114-61119:61114-61119"],
+    "build": {
+        "dockerfile": "Dockerfile",
+        "options": ["--platform=linux/amd64"]
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": ["EditorConfig.EditorConfig", "rust-lang.rust-analyzer"],
+            "settings": {
+                "files.insertFinalNewline": true,
+                "files.trimFinalNewlines": true,
+                "files.trimTrailingWhitespace": true
+            }
+        }
+    },
+    "init": true,
+    "postCreateCommand": ["make", "postcreate"],
+    "remoteUser": "devcontainer",
+    "updateRemoteUserUID": true,
+    "waitFor": "postCreateCommand",
+    "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}"
+}

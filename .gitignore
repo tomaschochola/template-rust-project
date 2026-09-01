@@ -1,0 +1,20 @@
+# generic
+.DS_Store
+.fleet
+.idea
+.vscode
+.zed
+.antigravitycli
+
+# node
+/node_modules
+
+# rust
+/target
+
+# generated artifacts
+/dist
+
+# environment files and secrets
+/.env
+/.secrets

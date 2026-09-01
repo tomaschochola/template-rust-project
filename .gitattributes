@@ -1,0 +1,4 @@
+* text=auto eol=lf
+
+Cargo.lock -merge linguist-generated
+package-lock.json -merge linguist-generated
