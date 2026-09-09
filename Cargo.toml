@@ -2,7 +2,7 @@
 name = "template-rust-project"
 version = "0.0.0"
 edition = "2024"
-rust-version = "1.98.0"
+rust-version = "1.98.1"
 license = "CC-BY-ND-4.0"
 publish = false
 

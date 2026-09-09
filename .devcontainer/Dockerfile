@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
 
-FROM docker.io/library/node:24-trixie@sha256:ef91212c27702eab90248892b1ac837ba3e903f78385770bd11f7c460e28eaf7 AS versionednode
-FROM docker.io/library/rust:1.98.0-trixie@sha256:620dbcd124499c59e2406d3741574b5c5838cf9eb9656f0c3a03948f79b02959
+FROM docker.io/library/node:24-trixie@sha256:f7d34e58713740f9eef9092c0bd6ff10369d132f7238399a4b270f16d47fa608 AS versionednode
+FROM docker.io/library/rust:1.98.1-trixie@sha256:462a9af3c54fb4718850d3c602fc0e54452c20b1c12a4e4080fdb001d4b9acbf
 
 COPY --from=versionednode /usr/local/bin/node /usr/local/bin/node
 COPY --from=versionednode /usr/local/include/node /usr/local/include/node
@@ -11,8 +11,8 @@ COPY --from=versionednode /usr/local/LICENSE /usr/local/share/doc/node/LICENSE
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes --no-install-recommends \
 	&& DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends gcc-aarch64-linux-gnu git libc6-dev-arm64-cross make openssh-client sudo \
-	&& rustup component add --toolchain 1.98.0 clippy rust-analyzer rust-src rustfmt \
-	&& rustup target add --toolchain 1.98.0 \
+	&& rustup component add --toolchain 1.98.1 clippy rust-analyzer rust-src rustfmt \
+	&& rustup target add --toolchain 1.98.1 \
 		aarch64-apple-darwin \
 		aarch64-unknown-linux-gnu \
 		x86_64-apple-darwin \

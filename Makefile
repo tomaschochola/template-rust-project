@@ -239,8 +239,8 @@ npm_clean:
 
 .PHONY: rust_toolchain_check
 rust_toolchain_check: ./rust-toolchain.toml
-	test "$$(rustc --version | cut --delimiter=' ' --fields=2)" = "1.98.0"
-	test "$$(cargo --version | cut --delimiter=' ' --fields=2)" = "1.98.0"
+	test "$$(rustc --version | cut --delimiter=' ' --fields=2)" = "1.98.1"
+	test "$$(cargo --version | cut --delimiter=' ' --fields=2)" = "1.98.1"
 	test "$$(rustc --verbose --version | sed -n 's/^host: //p')" = "x86_64-unknown-linux-gnu"
 	rustup component list --installed | grep -Eq '^clippy-'
 	rustup component list --installed | grep -Eq '^rust-analyzer-'
