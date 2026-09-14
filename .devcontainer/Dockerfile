@@ -1,12 +1,24 @@
 # syntax=docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
 
-FROM docker.io/library/node:24-trixie@sha256:f7d34e58713740f9eef9092c0bd6ff10369d132f7238399a4b270f16d47fa608 AS versionednode
+ARG TARGETARCH
+
+FROM scratch AS node-amd64
+
+ADD --checksum=sha256:855d581f8a4eb1a8117e3426de25fe02770592febcfb31369aee1ffbfee9e8ec \
+    https://nodejs.org/dist/v24.20.0/node-v24.20.0-linux-x64.tar.gz \
+    /tmp/node.tgz
+
+FROM scratch AS node-arm64
+
+ADD --checksum=sha256:3515603e2487879a39bc75716f1a2affd027500c64ba50e845cf72cb33219013 \
+    https://nodejs.org/dist/v24.20.0/node-v24.20.0-linux-arm64.tar.gz \
+    /tmp/node.tgz
+
+FROM node-${TARGETARCH} AS node
+
 FROM docker.io/library/rust:1.98.1-trixie@sha256:462a9af3c54fb4718850d3c602fc0e54452c20b1c12a4e4080fdb001d4b9acbf
 
-COPY --from=versionednode /usr/local/bin/node /usr/local/bin/node
-COPY --from=versionednode /usr/local/include/node /usr/local/include/node
-COPY --from=versionednode /usr/local/lib/node_modules /usr/local/lib/node_modules
-COPY --from=versionednode /usr/local/LICENSE /usr/local/share/doc/node/LICENSE
+COPY --from=node /tmp/node.tgz /tmp/node.tgz
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes --no-install-recommends \
@@ -20,10 +32,10 @@ RUN apt-get update \
         x86_64-unknown-linux-gnuasan \
         x86_64-unknown-linux-gnumsan \
         x86_64-unknown-linux-gnutsan \
+    && tar --extract --gzip --file /tmp/node.tgz --directory /usr/local --strip-components=1 --exclude='*/README.md' --exclude='*/CHANGELOG.md' --exclude='*/LICENSE' \
+    && rm --force -- /tmp/node.tgz \
     && groupadd --gid 1000 devcontainer \
     && useradd --uid 1000 --gid devcontainer --shell /bin/bash --create-home devcontainer \
-    && ln --symbolic ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
-    && ln --symbolic ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
     && install --directory --owner devcontainer --group devcontainer \
         /home/devcontainer/.cargo \
         /home/devcontainer/.local \
