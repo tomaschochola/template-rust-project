@@ -26,7 +26,9 @@ never:
 
 # Options
 
-DEVCONTAINER_FILTER := label=devcontainer.local_folder=$(CURDIR)
+DEVCONTAINER_COMPOSE := ./.devcontainer/docker-compose.yml
+
+LC_ALL ?= C.UTF-8
 
 DESTDIR ?=
 
@@ -37,6 +39,8 @@ PROGRAM := template-rust-project
 RUSTFLAGS ?=
 
 RUSTDOCFLAGS ?=
+
+CARGO_TERM_COLOR := never
 
 ifeq ($(origin SOURCE_DATE_EPOCH), undefined)
 SOURCE_DATE_EPOCH := $(shell git log -1 --format=%ct 2>/dev/null)
@@ -49,9 +53,6 @@ VERSION := $(shell git describe --tags --always --dirty 2>/dev/null)
 else
 override VERSION := $(value VERSION)
 endif
-
-export SOURCE_DATE_EPOCH
-export VERSION
 
 RUST_TARGET_LINUX_AMD64 := x86_64-unknown-linux-gnu
 RUST_TARGET_LINUX_ARM64 := aarch64-unknown-linux-gnu
@@ -93,7 +94,10 @@ exec_prefix ?= $(prefix)
 
 bindir ?= $(exec_prefix)/bin
 
-export CARGO_TERM_COLOR := never
+export LC_ALL
+export SOURCE_DATE_EPOCH
+export VERSION
+export CARGO_TERM_COLOR
 
 # Public goals
 
@@ -104,7 +108,7 @@ fix: cargo_fix clippy_fix rustfmt_fix prettier_fix trimmer_fix
 check: doctor lint analyze test dist audit
 
 .PHONY: doctor
-doctor: git_check npm_config_check npm_doctor rust_toolchain_check
+doctor: git_check npm_config_check npm_doctor npm_check rust_toolchain_check
 
 .PHONY: lint
 lint: rustfmt_check prettier_check trimmer_check
@@ -144,10 +148,18 @@ uninstall:
 
 .PHONY: installcheck
 installcheck:
-	test "$$("$(DESTDIR)$(bindir)/$(PROGRAM)" first second)" = "$$(printf 'first\nsecond')"
+	test -f "$(DESTDIR)$(bindir)/$(PROGRAM)"
+	test -x "$(DESTDIR)$(bindir)/$(PROGRAM)"
+	"$(DESTDIR)$(bindir)/$(PROGRAM)"
 
 .PHONY: dist
 dist: dist_metadata_check all cargo_dist
+
+.PHONY: dist-install
+dist-install: dist
+	cd ./dist && sha256sum --check SHA256SUMS
+	$(MAKE) install
+	$(MAKE) installcheck
 
 .PHONY: postcreate
 postcreate: deps_install rust_toolchain_check
@@ -162,11 +174,11 @@ shell: up
 
 .PHONY: stop
 stop:
-	docker container ls --quiet --filter "$(DEVCONTAINER_FILTER)" | while IFS= read -r container; do docker container stop "$$container"; done
+	docker compose -f "$(DEVCONTAINER_COMPOSE)" stop
 
 .PHONY: down
-down: stop
-	docker container ls --all --quiet --filter "$(DEVCONTAINER_FILTER)" | while IFS= read -r container; do docker container rm "$$container"; done
+down:
+	docker compose -f "$(DEVCONTAINER_COMPOSE)" down --remove-orphans
 
 .PHONY: rebuild
 rebuild: devcontainer_check down
@@ -451,6 +463,7 @@ git_check:
 .PHONY: devcontainer_check
 devcontainer_check:
 	devcontainer read-configuration --workspace-folder . >/dev/null
+	docker compose -f "$(DEVCONTAINER_COMPOSE)" config --quiet
 	docker build --check --file ./.devcontainer/Dockerfile ./.devcontainer
 
 # Private targets
