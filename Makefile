@@ -26,78 +26,31 @@ never:
 
 # Options
 
-DEVCONTAINER_COMPOSE := ./.devcontainer/docker-compose.yml
-
-LC_ALL ?= C.UTF-8
-
-DESTDIR ?=
-
-override HOST_OS := $(shell uname -s)
-
-PROGRAM := template-rust-project
-
+COMPOSE_PROJECT_NAME ?= template-rust-project-$(shell pwd -P | sha256sum | cut -c1-16)
 RUSTFLAGS ?=
-
 RUSTDOCFLAGS ?=
-
-CARGO_TERM_COLOR := never
-
-ifeq ($(origin SOURCE_DATE_EPOCH), undefined)
-SOURCE_DATE_EPOCH := $(shell git log -1 --format=%ct 2>/dev/null)
-else
-override SOURCE_DATE_EPOCH := $(value SOURCE_DATE_EPOCH)
-endif
-
-ifeq ($(origin VERSION), undefined)
-VERSION := $(shell git describe --tags --always --dirty 2>/dev/null)
-else
-override VERSION := $(value VERSION)
-endif
-
-RUST_TARGET_LINUX_AMD64 := x86_64-unknown-linux-gnu
-RUST_TARGET_LINUX_ARM64 := aarch64-unknown-linux-gnu
-RUST_TARGET_DARWIN_AMD64 := x86_64-apple-darwin
-RUST_TARGET_DARWIN_ARM64 := aarch64-apple-darwin
-
-BINARY_LINUX_AMD64_V1 := ./target/build/linux-amd64-v1/$(RUST_TARGET_LINUX_AMD64)/release/$(PROGRAM)
-BINARY_LINUX_AMD64_V2 := ./target/build/linux-amd64-v2/$(RUST_TARGET_LINUX_AMD64)/release/$(PROGRAM)
-BINARY_LINUX_AMD64_V3 := ./target/build/linux-amd64-v3/$(RUST_TARGET_LINUX_AMD64)/release/$(PROGRAM)
-BINARY_LINUX_ARM64_V8 := ./target/build/linux-arm64-v8.0/$(RUST_TARGET_LINUX_ARM64)/release/$(PROGRAM)
-BINARY_DARWIN_AMD64_V1 := ./target/build/darwin-amd64-v1/$(RUST_TARGET_DARWIN_AMD64)/release/$(PROGRAM)
-BINARY_DARWIN_AMD64_V2 := ./target/build/darwin-amd64-v2/$(RUST_TARGET_DARWIN_AMD64)/release/$(PROGRAM)
-BINARY_DARWIN_AMD64_V3 := ./target/build/darwin-amd64-v3/$(RUST_TARGET_DARWIN_AMD64)/release/$(PROGRAM)
-BINARY_DARWIN_ARM64_V8 := ./target/build/darwin-arm64-v8.0/$(RUST_TARGET_DARWIN_ARM64)/release/$(PROGRAM)
-BINARY_DARWIN_ARM64_M1 := ./target/build/darwin-arm64-m1/$(RUST_TARGET_DARWIN_ARM64)/release/$(PROGRAM)
-BINARY_DARWIN_ARM64_M2 := ./target/build/darwin-arm64-m2/$(RUST_TARGET_DARWIN_ARM64)/release/$(PROGRAM)
-BINARY_DARWIN_ARM64_M3 := ./target/build/darwin-arm64-m3/$(RUST_TARGET_DARWIN_ARM64)/release/$(PROGRAM)
-BINARY_DARWIN_ARM64_M4 := ./target/build/darwin-arm64-m4/$(RUST_TARGET_DARWIN_ARM64)/release/$(PROGRAM)
-BINARY_DARWIN_ARM64_M5 := ./target/build/darwin-arm64-m5/$(RUST_TARGET_DARWIN_ARM64)/release/$(PROGRAM)
-BINARY_NATIVE := ./target/native/release/$(PROGRAM)
-
-PACKAGE_LINUX_AMD64_V1 := $(PROGRAM)-$(VERSION)-linux-amd64-v1
-PACKAGE_LINUX_AMD64_V2 := $(PROGRAM)-$(VERSION)-linux-amd64-v2
-PACKAGE_LINUX_AMD64_V3 := $(PROGRAM)-$(VERSION)-linux-amd64-v3
-PACKAGE_LINUX_ARM64_V8 := $(PROGRAM)-$(VERSION)-linux-arm64-v8.0
-PACKAGE_DARWIN_AMD64_V1 := $(PROGRAM)-$(VERSION)-darwin-amd64-v1
-PACKAGE_DARWIN_AMD64_V2 := $(PROGRAM)-$(VERSION)-darwin-amd64-v2
-PACKAGE_DARWIN_AMD64_V3 := $(PROGRAM)-$(VERSION)-darwin-amd64-v3
-PACKAGE_DARWIN_ARM64_V8 := $(PROGRAM)-$(VERSION)-darwin-arm64-v8.0
-PACKAGE_DARWIN_ARM64_M1 := $(PROGRAM)-$(VERSION)-darwin-arm64-m1
-PACKAGE_DARWIN_ARM64_M2 := $(PROGRAM)-$(VERSION)-darwin-arm64-m2
-PACKAGE_DARWIN_ARM64_M3 := $(PROGRAM)-$(VERSION)-darwin-arm64-m3
-PACKAGE_DARWIN_ARM64_M4 := $(PROGRAM)-$(VERSION)-darwin-arm64-m4
-PACKAGE_DARWIN_ARM64_M5 := $(PROGRAM)-$(VERSION)-darwin-arm64-m5
-
+DESTDIR ?=
+VERSION ?= $(shell v=$$(git describe --tags --abbrev=0 2>/dev/null || echo 0.0.0); v=$${v#v}; echo "$$v")
+SOURCE_DATE_EPOCH ?= $(shell git log -1 --format=%ct 2>/dev/null || echo 0)
 prefix ?= /usr/local
-
 exec_prefix ?= $(prefix)
-
 bindir ?= $(exec_prefix)/bin
+SUDO ?= sudo
+
+DEVCONTAINER_COMPOSE := ./.devcontainer/docker-compose.yml
+DEVCONTAINER_TMPDIR := $(CURDIR)/.devcontainer/.tmp
+LC_ALL := C.UTF-8
+PROGRAM := template-rust-project
+CARGO_TERM_COLOR := never
+PACKAGE_DEBUG := $(PROGRAM)-$(VERSION)-debug
+PACKAGE_RELEASE := $(PROGRAM)-$(VERSION)-release
+PACKAGE_NATIVE := $(PROGRAM)-$(VERSION)-native
 
 export LC_ALL
-export SOURCE_DATE_EPOCH
 export VERSION
+export SOURCE_DATE_EPOCH
 export CARGO_TERM_COLOR
+export COMPOSE_PROJECT_NAME
 
 # Public goals
 
@@ -105,10 +58,10 @@ export CARGO_TERM_COLOR
 fix: cargo_fix clippy_fix rustfmt_fix prettier_fix trimmer_fix
 
 .PHONY: check
-check: doctor lint analyze test dist audit
+check: devcontainer_gate doctor lint analyze test audit
 
 .PHONY: doctor
-doctor: git_check npm_config_check npm_doctor npm_check rust_toolchain_check
+doctor: git_check npm_config_check npm_doctor npm_check toolchain_check
 
 .PHONY: lint
 lint: rustfmt_check prettier_check trimmer_check
@@ -117,13 +70,13 @@ lint: rustfmt_check prettier_check trimmer_check
 analyze: npm_check clippy_check rustdoc_check
 
 .PHONY: test
-test: cargo_test cargo_sanitizer_test
+test: devcontainer_gate cargo_test
 
 .PHONY: audit
 audit: npm_audit
 
 .PHONY: update
-update: npm_config_check ./package.json ./package-lock.json ./Cargo.toml ./Cargo.lock npm_update cargo_update
+update: npm_config_check npm_update cargo_update
 
 .PHONY: clean
 clean: cargo_clean
@@ -132,64 +85,73 @@ clean: cargo_clean
 distclean: clean deps_clean
 
 .PHONY: all
-all: cargo_build
+all: debug release native
 
 .PHONY: installdirs
 installdirs:
-	install --directory --mode=0755 -- "$(DESTDIR)$(bindir)"
+	$(SUDO) install --directory --mode=0755 -- "$(DESTDIR)$(bindir)"
 
 .PHONY: install
-install: cargo_build_native installdirs
-	install --mode=0755 -- "$(BINARY_NATIVE)" "$(DESTDIR)$(bindir)/$(PROGRAM)"
+install: native installdirs
+	$(SUDO) install --mode=0755 -- ./target/native/release/$(PROGRAM) "$(DESTDIR)$(bindir)/$(PROGRAM)"
 
 .PHONY: uninstall
 uninstall:
-	rm --force -- "$(DESTDIR)$(bindir)/$(PROGRAM)"
+	$(SUDO) rm --force -- "$(DESTDIR)$(bindir)/$(PROGRAM)"
 
 .PHONY: installcheck
 installcheck:
 	test -f "$(DESTDIR)$(bindir)/$(PROGRAM)"
 	test -x "$(DESTDIR)$(bindir)/$(PROGRAM)"
-	"$(DESTDIR)$(bindir)/$(PROGRAM)"
-
-.PHONY: dist
-dist: dist_metadata_check all cargo_dist
-
-.PHONY: dist-install
-dist-install: dist
-	cd ./dist && sha256sum --check SHA256SUMS
-	$(MAKE) install
-	$(MAKE) installcheck
 
 .PHONY: postcreate
-postcreate: deps_install rust_toolchain_check
+postcreate: deps_install toolchain_check
 
 .PHONY: up
-up: devcontainer_check
-	devcontainer up --workspace-folder .
+up: host_gate devcontainer_check
+	mkdir --parents -- "$(DEVCONTAINER_TMPDIR)"
+	env TMPDIR="$(DEVCONTAINER_TMPDIR)" devcontainer up --workspace-folder .
 
 .PHONY: shell
-shell: up
+shell: interactive_gate host_gate up
 	devcontainer exec --workspace-folder . /bin/bash
 
 .PHONY: stop
-stop:
+stop: host_gate
 	docker compose -f "$(DEVCONTAINER_COMPOSE)" stop
 
 .PHONY: down
-down:
+down: host_gate
 	docker compose -f "$(DEVCONTAINER_COMPOSE)" down --remove-orphans
 
 .PHONY: rebuild
-rebuild: devcontainer_check down
-	devcontainer up --workspace-folder . --build-no-cache
+rebuild: host_gate devcontainer_check down
+	mkdir --parents -- "$(DEVCONTAINER_TMPDIR)"
+	env TMPDIR="$(DEVCONTAINER_TMPDIR)" devcontainer up --workspace-folder . --build-no-cache
+
+.PHONY: nuke
+nuke: distclean prune
+
+.PHONY: prune
+prune: host_gate
+	docker compose -f "$(DEVCONTAINER_COMPOSE)" down --volumes --rmi all --remove-orphans
 
 # Protected goals
 
-.PHONY: dist_metadata_check
-dist_metadata_check:
-	if [[ ! "$${SOURCE_DATE_EPOCH}" =~ ^[0-9]+$$ ]]; then printf '%s\n' 'SOURCE_DATE_EPOCH must contain only decimal digits' >&2; exit 1; fi
-	if [[ ! "$${VERSION}" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$$ ]]; then printf '%s\n' 'VERSION contains unsupported characters' >&2; exit 1; fi
+.PHONY: host_gate
+.SILENT: host_gate
+host_gate:
+	if test -e /.dockerenv; then printf '%s\n' 'host_gate: host only' >&2; exit 1; fi
+
+.PHONY: devcontainer_gate
+.SILENT: devcontainer_gate
+devcontainer_gate:
+	if test ! -e /.dockerenv; then printf '%s\n' 'devcontainer_gate: devcontainer only' >&2; exit 1; fi
+
+.PHONY: interactive_gate
+.SILENT: interactive_gate
+interactive_gate:
+	if test ! -t 0 || test ! -t 1; then printf '%s\n' 'interactive_gate: interactive only' >&2; exit 1; fi
 
 .PHONY: deps_install
 deps_install: npm_install cargo_fetch
@@ -249,22 +211,11 @@ npm_update: npm_config_check ./package.json ./package-lock.json npm_clean
 npm_clean:
 	rm --force --recursive --one-file-system -- ./node_modules
 
-.PHONY: rust_toolchain_check
-rust_toolchain_check: ./rust-toolchain.toml
-	test "$$(rustc --version | cut --delimiter=' ' --fields=2)" = "1.98.1"
-	test "$$(cargo --version | cut --delimiter=' ' --fields=2)" = "1.98.1"
-	test "$$(rustc --verbose --version | sed -n 's/^host: //p')" = "x86_64-unknown-linux-gnu"
-	rustup component list --installed | grep -Eq '^clippy-'
-	rustup component list --installed | grep -Eq '^rust-analyzer-'
-	rustup component list --installed | grep -Eq '^rust-src($$|-)'
-	rustup component list --installed | grep -Eq '^rustfmt-'
-	rustup target list --installed | grep -Fxq "$(RUST_TARGET_DARWIN_AMD64)"
-	rustup target list --installed | grep -Fxq "$(RUST_TARGET_DARWIN_ARM64)"
-	rustup target list --installed | grep -Fxq "$(RUST_TARGET_LINUX_AMD64)"
-	rustup target list --installed | grep -Fxq "$(RUST_TARGET_LINUX_ARM64)"
-	rustup target list --installed | grep -Fxq "x86_64-unknown-linux-gnuasan"
-	rustup target list --installed | grep -Fxq "x86_64-unknown-linux-gnumsan"
-	rustup target list --installed | grep -Fxq "x86_64-unknown-linux-gnutsan"
+.PHONY: toolchain_check
+toolchain_check: ./rust-toolchain.toml
+	rustup show
+	rustc --version
+	cargo --version
 
 .PHONY: cargo_fetch
 cargo_fetch: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
@@ -302,155 +253,62 @@ rustdoc_check: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
 cargo_test: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
 	cargo test --locked --all-features
 
-.PHONY: cargo_sanitizer_test
-cargo_sanitizer_test: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
+.PHONY: asan
+asan: devcontainer_gate ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
 	cargo test --locked --all-features --target x86_64-unknown-linux-gnuasan
+
+.PHONY: msan
+msan: devcontainer_gate ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
 	cargo test --locked --all-features --target x86_64-unknown-linux-gnumsan
+
+.PHONY: tsan
+tsan: devcontainer_gate ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
 	cargo test --locked --all-features --target x86_64-unknown-linux-gnutsan
 
-ifeq ($(HOST_OS),Linux)
-.PHONY: cargo_build
-cargo_build: cargo_build_linux
-else ifeq ($(HOST_OS),Darwin)
-.PHONY: cargo_build
-cargo_build: cargo_build_darwin
-else
-.PHONY: cargo_build
-cargo_build:
-	printf '%s\n' 'Unsupported build host: $(HOST_OS)' >&2
-	exit 1
-endif
+.PHONY: sanitize
+sanitize: asan msan tsan
 
-.PHONY: cargo_build_linux
-cargo_build_linux: cargo_build_linux_amd64_v1 cargo_build_linux_amd64_v2 cargo_build_linux_amd64_v3 cargo_build_linux_arm64_v8
+.PHONY: debug
+debug: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
+	cargo build --locked --all-features
 
-.PHONY: cargo_build_darwin
-cargo_build_darwin: cargo_build_darwin_amd64_v1 cargo_build_darwin_amd64_v2 cargo_build_darwin_amd64_v3 cargo_build_darwin_arm64_v8 cargo_build_darwin_arm64_m1 cargo_build_darwin_arm64_m2 cargo_build_darwin_arm64_m3 cargo_build_darwin_arm64_m4 cargo_build_darwin_arm64_m5
+.PHONY: release
+release: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
+	cargo build --locked --release --all-features
 
-.PHONY: cargo_build_linux_amd64_v1
-cargo_build_linux_amd64_v1: ./.cargo/config.toml ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	CARGO_TARGET_DIR=./target/build/linux-amd64-v1 RUSTFLAGS='$(strip $(RUSTFLAGS) -C target-cpu=x86-64)' cargo build --locked --release --all-features --target "$(RUST_TARGET_LINUX_AMD64)"
+.PHONY: native
+native: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
+	RUSTFLAGS='$(strip $(RUSTFLAGS) -C target-cpu=native)' cargo build --locked --release --all-features --target-dir ./target/native
 
-.PHONY: cargo_build_linux_amd64_v2
-cargo_build_linux_amd64_v2: ./.cargo/config.toml ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	CARGO_TARGET_DIR=./target/build/linux-amd64-v2 RUSTFLAGS='$(strip $(RUSTFLAGS) -C target-cpu=x86-64-v2)' cargo build --locked --release --all-features --target "$(RUST_TARGET_LINUX_AMD64)"
+.PHONY: dist_debug
+dist_debug: debug
+	install --directory --mode=0755 -- "./target/package/$(PACKAGE_DEBUG)" "./target/package/$(PACKAGE_DEBUG)/bin" ./dist
+	install --mode=0755 -- ./target/debug/$(PROGRAM) "./target/package/$(PACKAGE_DEBUG)/bin/$(PROGRAM)"
+	install --mode=0644 -- ./LICENSE "./target/package/$(PACKAGE_DEBUG)/LICENSE"
+	tar --sort=name --mtime="@$(SOURCE_DATE_EPOCH)" --owner=0 --group=0 --numeric-owner --create --gzip --file="./dist/$(PACKAGE_DEBUG).tar.gz" --directory=./target/package -- "$(PACKAGE_DEBUG)"
 
-.PHONY: cargo_build_linux_amd64_v3
-cargo_build_linux_amd64_v3: ./.cargo/config.toml ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	CARGO_TARGET_DIR=./target/build/linux-amd64-v3 RUSTFLAGS='$(strip $(RUSTFLAGS) -C target-cpu=x86-64-v3)' cargo build --locked --release --all-features --target "$(RUST_TARGET_LINUX_AMD64)"
+.PHONY: dist_release
+dist_release: release
+	install --directory --mode=0755 -- "./target/package/$(PACKAGE_RELEASE)" "./target/package/$(PACKAGE_RELEASE)/bin" ./dist
+	install --mode=0755 -- ./target/release/$(PROGRAM) "./target/package/$(PACKAGE_RELEASE)/bin/$(PROGRAM)"
+	install --mode=0644 -- ./LICENSE "./target/package/$(PACKAGE_RELEASE)/LICENSE"
+	tar --sort=name --mtime="@$(SOURCE_DATE_EPOCH)" --owner=0 --group=0 --numeric-owner --create --gzip --file="./dist/$(PACKAGE_RELEASE).tar.gz" --directory=./target/package -- "$(PACKAGE_RELEASE)"
 
-.PHONY: cargo_build_linux_arm64_v8
-cargo_build_linux_arm64_v8: ./.cargo/config.toml ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	CARGO_TARGET_DIR=./target/build/linux-arm64-v8.0 RUSTFLAGS='$(strip $(RUSTFLAGS) -C target-cpu=generic)' cargo build --locked --release --all-features --target "$(RUST_TARGET_LINUX_ARM64)"
+.PHONY: dist_native
+dist_native: native
+	install --directory --mode=0755 -- "./target/package/$(PACKAGE_NATIVE)" "./target/package/$(PACKAGE_NATIVE)/bin" ./dist
+	install --mode=0755 -- ./target/native/release/$(PROGRAM) "./target/package/$(PACKAGE_NATIVE)/bin/$(PROGRAM)"
+	install --mode=0644 -- ./LICENSE "./target/package/$(PACKAGE_NATIVE)/LICENSE"
+	tar --sort=name --mtime="@$(SOURCE_DATE_EPOCH)" --owner=0 --group=0 --numeric-owner --create --gzip --file="./dist/$(PACKAGE_NATIVE).tar.gz" --directory=./target/package -- "$(PACKAGE_NATIVE)"
 
-.PHONY: cargo_build_darwin_amd64_v1
-cargo_build_darwin_amd64_v1: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	CARGO_TARGET_DIR=./target/build/darwin-amd64-v1 RUSTFLAGS='$(strip $(RUSTFLAGS) -C target-cpu=x86-64)' cargo build --locked --release --all-features --target "$(RUST_TARGET_DARWIN_AMD64)"
-
-.PHONY: cargo_build_darwin_amd64_v2
-cargo_build_darwin_amd64_v2: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	CARGO_TARGET_DIR=./target/build/darwin-amd64-v2 RUSTFLAGS='$(strip $(RUSTFLAGS) -C target-cpu=x86-64-v2)' cargo build --locked --release --all-features --target "$(RUST_TARGET_DARWIN_AMD64)"
-
-.PHONY: cargo_build_darwin_amd64_v3
-cargo_build_darwin_amd64_v3: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	CARGO_TARGET_DIR=./target/build/darwin-amd64-v3 RUSTFLAGS='$(strip $(RUSTFLAGS) -C target-cpu=x86-64-v3)' cargo build --locked --release --all-features --target "$(RUST_TARGET_DARWIN_AMD64)"
-
-.PHONY: cargo_build_darwin_arm64_v8
-cargo_build_darwin_arm64_v8: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	CARGO_TARGET_DIR=./target/build/darwin-arm64-v8.0 RUSTFLAGS='$(strip $(RUSTFLAGS) -C target-cpu=generic)' cargo build --locked --release --all-features --target "$(RUST_TARGET_DARWIN_ARM64)"
-
-.PHONY: cargo_build_darwin_arm64_m1
-cargo_build_darwin_arm64_m1: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	CARGO_TARGET_DIR=./target/build/darwin-arm64-m1 RUSTFLAGS='$(strip $(RUSTFLAGS) -C target-cpu=apple-m1)' cargo build --locked --release --all-features --target "$(RUST_TARGET_DARWIN_ARM64)"
-
-.PHONY: cargo_build_darwin_arm64_m2
-cargo_build_darwin_arm64_m2: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	CARGO_TARGET_DIR=./target/build/darwin-arm64-m2 RUSTFLAGS='$(strip $(RUSTFLAGS) -C target-cpu=apple-m2)' cargo build --locked --release --all-features --target "$(RUST_TARGET_DARWIN_ARM64)"
-
-.PHONY: cargo_build_darwin_arm64_m3
-cargo_build_darwin_arm64_m3: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	CARGO_TARGET_DIR=./target/build/darwin-arm64-m3 RUSTFLAGS='$(strip $(RUSTFLAGS) -C target-cpu=apple-m3)' cargo build --locked --release --all-features --target "$(RUST_TARGET_DARWIN_ARM64)"
-
-.PHONY: cargo_build_darwin_arm64_m4
-cargo_build_darwin_arm64_m4: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	CARGO_TARGET_DIR=./target/build/darwin-arm64-m4 RUSTFLAGS='$(strip $(RUSTFLAGS) -C target-cpu=apple-m4)' cargo build --locked --release --all-features --target "$(RUST_TARGET_DARWIN_ARM64)"
-
-.PHONY: cargo_build_darwin_arm64_m5
-cargo_build_darwin_arm64_m5: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	CARGO_TARGET_DIR=./target/build/darwin-arm64-m5 RUSTFLAGS='$(strip $(RUSTFLAGS) -C target-cpu=apple-m5)' cargo build --locked --release --all-features --target "$(RUST_TARGET_DARWIN_ARM64)"
-
-.PHONY: cargo_build_native
-cargo_build_native: ./.cargo/config.toml ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	CARGO_TARGET_DIR=./target/native cargo build --locked --release --all-features
-
-ifeq ($(HOST_OS),Linux)
-.PHONY: cargo_dist
-cargo_dist: cargo_dist_linux
-else ifeq ($(HOST_OS),Darwin)
-.PHONY: cargo_dist
-cargo_dist: cargo_dist_darwin
-else
-.PHONY: cargo_dist
-cargo_dist:
-	printf '%s\n' 'Unsupported distribution host: $(HOST_OS)' >&2
-	exit 1
-endif
-
-.PHONY: cargo_dist_linux
-cargo_dist_linux: dist_metadata_check cargo_build_linux
-	rm --force --recursive --one-file-system -- ./target/package ./dist
-	install --directory --mode=0755 -- "./target/package/$(PACKAGE_LINUX_AMD64_V1)" "./target/package/$(PACKAGE_LINUX_AMD64_V1)/bin" "./target/package/$(PACKAGE_LINUX_AMD64_V2)" "./target/package/$(PACKAGE_LINUX_AMD64_V2)/bin" "./target/package/$(PACKAGE_LINUX_AMD64_V3)" "./target/package/$(PACKAGE_LINUX_AMD64_V3)/bin" "./target/package/$(PACKAGE_LINUX_ARM64_V8)" "./target/package/$(PACKAGE_LINUX_ARM64_V8)/bin" ./dist
-	install --mode=0755 -- "$(BINARY_LINUX_AMD64_V1)" "./target/package/$(PACKAGE_LINUX_AMD64_V1)/bin/$(PROGRAM)"
-	install --mode=0755 -- "$(BINARY_LINUX_AMD64_V2)" "./target/package/$(PACKAGE_LINUX_AMD64_V2)/bin/$(PROGRAM)"
-	install --mode=0755 -- "$(BINARY_LINUX_AMD64_V3)" "./target/package/$(PACKAGE_LINUX_AMD64_V3)/bin/$(PROGRAM)"
-	install --mode=0755 -- "$(BINARY_LINUX_ARM64_V8)" "./target/package/$(PACKAGE_LINUX_ARM64_V8)/bin/$(PROGRAM)"
-	install --mode=0644 -- ./LICENSE "./target/package/$(PACKAGE_LINUX_AMD64_V1)/LICENSE"
-	install --mode=0644 -- ./LICENSE "./target/package/$(PACKAGE_LINUX_AMD64_V2)/LICENSE"
-	install --mode=0644 -- ./LICENSE "./target/package/$(PACKAGE_LINUX_AMD64_V3)/LICENSE"
-	install --mode=0644 -- ./LICENSE "./target/package/$(PACKAGE_LINUX_ARM64_V8)/LICENSE"
-	tar --sort=name --mtime="@$(SOURCE_DATE_EPOCH)" --owner=0 --group=0 --numeric-owner --create --gzip --file="./dist/$(PACKAGE_LINUX_AMD64_V1).tar.gz" --directory=./target/package -- "$(PACKAGE_LINUX_AMD64_V1)"
-	tar --sort=name --mtime="@$(SOURCE_DATE_EPOCH)" --owner=0 --group=0 --numeric-owner --create --gzip --file="./dist/$(PACKAGE_LINUX_AMD64_V2).tar.gz" --directory=./target/package -- "$(PACKAGE_LINUX_AMD64_V2)"
-	tar --sort=name --mtime="@$(SOURCE_DATE_EPOCH)" --owner=0 --group=0 --numeric-owner --create --gzip --file="./dist/$(PACKAGE_LINUX_AMD64_V3).tar.gz" --directory=./target/package -- "$(PACKAGE_LINUX_AMD64_V3)"
-	tar --sort=name --mtime="@$(SOURCE_DATE_EPOCH)" --owner=0 --group=0 --numeric-owner --create --gzip --file="./dist/$(PACKAGE_LINUX_ARM64_V8).tar.gz" --directory=./target/package -- "$(PACKAGE_LINUX_ARM64_V8)"
-	cd ./dist && sha256sum -- "$(PACKAGE_LINUX_AMD64_V1).tar.gz" "$(PACKAGE_LINUX_AMD64_V2).tar.gz" "$(PACKAGE_LINUX_AMD64_V3).tar.gz" "$(PACKAGE_LINUX_ARM64_V8).tar.gz" > ./SHA256SUMS
-
-.PHONY: cargo_dist_darwin
-cargo_dist_darwin: dist_metadata_check cargo_build_darwin
-	rm --force --recursive --one-file-system -- ./target/package ./dist
-	install --directory --mode=0755 -- "./target/package/$(PACKAGE_DARWIN_AMD64_V1)" "./target/package/$(PACKAGE_DARWIN_AMD64_V1)/bin" "./target/package/$(PACKAGE_DARWIN_AMD64_V2)" "./target/package/$(PACKAGE_DARWIN_AMD64_V2)/bin" "./target/package/$(PACKAGE_DARWIN_AMD64_V3)" "./target/package/$(PACKAGE_DARWIN_AMD64_V3)/bin" "./target/package/$(PACKAGE_DARWIN_ARM64_V8)" "./target/package/$(PACKAGE_DARWIN_ARM64_V8)/bin" "./target/package/$(PACKAGE_DARWIN_ARM64_M1)" "./target/package/$(PACKAGE_DARWIN_ARM64_M1)/bin" "./target/package/$(PACKAGE_DARWIN_ARM64_M2)" "./target/package/$(PACKAGE_DARWIN_ARM64_M2)/bin" "./target/package/$(PACKAGE_DARWIN_ARM64_M3)" "./target/package/$(PACKAGE_DARWIN_ARM64_M3)/bin" "./target/package/$(PACKAGE_DARWIN_ARM64_M4)" "./target/package/$(PACKAGE_DARWIN_ARM64_M4)/bin" "./target/package/$(PACKAGE_DARWIN_ARM64_M5)" "./target/package/$(PACKAGE_DARWIN_ARM64_M5)/bin" ./dist
-	install --mode=0755 -- "$(BINARY_DARWIN_AMD64_V1)" "./target/package/$(PACKAGE_DARWIN_AMD64_V1)/bin/$(PROGRAM)"
-	install --mode=0755 -- "$(BINARY_DARWIN_AMD64_V2)" "./target/package/$(PACKAGE_DARWIN_AMD64_V2)/bin/$(PROGRAM)"
-	install --mode=0755 -- "$(BINARY_DARWIN_AMD64_V3)" "./target/package/$(PACKAGE_DARWIN_AMD64_V3)/bin/$(PROGRAM)"
-	install --mode=0755 -- "$(BINARY_DARWIN_ARM64_V8)" "./target/package/$(PACKAGE_DARWIN_ARM64_V8)/bin/$(PROGRAM)"
-	install --mode=0755 -- "$(BINARY_DARWIN_ARM64_M1)" "./target/package/$(PACKAGE_DARWIN_ARM64_M1)/bin/$(PROGRAM)"
-	install --mode=0755 -- "$(BINARY_DARWIN_ARM64_M2)" "./target/package/$(PACKAGE_DARWIN_ARM64_M2)/bin/$(PROGRAM)"
-	install --mode=0755 -- "$(BINARY_DARWIN_ARM64_M3)" "./target/package/$(PACKAGE_DARWIN_ARM64_M3)/bin/$(PROGRAM)"
-	install --mode=0755 -- "$(BINARY_DARWIN_ARM64_M4)" "./target/package/$(PACKAGE_DARWIN_ARM64_M4)/bin/$(PROGRAM)"
-	install --mode=0755 -- "$(BINARY_DARWIN_ARM64_M5)" "./target/package/$(PACKAGE_DARWIN_ARM64_M5)/bin/$(PROGRAM)"
-	install --mode=0644 -- ./LICENSE "./target/package/$(PACKAGE_DARWIN_AMD64_V1)/LICENSE"
-	install --mode=0644 -- ./LICENSE "./target/package/$(PACKAGE_DARWIN_AMD64_V2)/LICENSE"
-	install --mode=0644 -- ./LICENSE "./target/package/$(PACKAGE_DARWIN_AMD64_V3)/LICENSE"
-	install --mode=0644 -- ./LICENSE "./target/package/$(PACKAGE_DARWIN_ARM64_V8)/LICENSE"
-	install --mode=0644 -- ./LICENSE "./target/package/$(PACKAGE_DARWIN_ARM64_M1)/LICENSE"
-	install --mode=0644 -- ./LICENSE "./target/package/$(PACKAGE_DARWIN_ARM64_M2)/LICENSE"
-	install --mode=0644 -- ./LICENSE "./target/package/$(PACKAGE_DARWIN_ARM64_M3)/LICENSE"
-	install --mode=0644 -- ./LICENSE "./target/package/$(PACKAGE_DARWIN_ARM64_M4)/LICENSE"
-	install --mode=0644 -- ./LICENSE "./target/package/$(PACKAGE_DARWIN_ARM64_M5)/LICENSE"
-	tar --sort=name --mtime="@$(SOURCE_DATE_EPOCH)" --owner=0 --group=0 --numeric-owner --create --gzip --file="./dist/$(PACKAGE_DARWIN_AMD64_V1).tar.gz" --directory=./target/package -- "$(PACKAGE_DARWIN_AMD64_V1)"
-	tar --sort=name --mtime="@$(SOURCE_DATE_EPOCH)" --owner=0 --group=0 --numeric-owner --create --gzip --file="./dist/$(PACKAGE_DARWIN_AMD64_V2).tar.gz" --directory=./target/package -- "$(PACKAGE_DARWIN_AMD64_V2)"
-	tar --sort=name --mtime="@$(SOURCE_DATE_EPOCH)" --owner=0 --group=0 --numeric-owner --create --gzip --file="./dist/$(PACKAGE_DARWIN_AMD64_V3).tar.gz" --directory=./target/package -- "$(PACKAGE_DARWIN_AMD64_V3)"
-	tar --sort=name --mtime="@$(SOURCE_DATE_EPOCH)" --owner=0 --group=0 --numeric-owner --create --gzip --file="./dist/$(PACKAGE_DARWIN_ARM64_V8).tar.gz" --directory=./target/package -- "$(PACKAGE_DARWIN_ARM64_V8)"
-	tar --sort=name --mtime="@$(SOURCE_DATE_EPOCH)" --owner=0 --group=0 --numeric-owner --create --gzip --file="./dist/$(PACKAGE_DARWIN_ARM64_M1).tar.gz" --directory=./target/package -- "$(PACKAGE_DARWIN_ARM64_M1)"
-	tar --sort=name --mtime="@$(SOURCE_DATE_EPOCH)" --owner=0 --group=0 --numeric-owner --create --gzip --file="./dist/$(PACKAGE_DARWIN_ARM64_M2).tar.gz" --directory=./target/package -- "$(PACKAGE_DARWIN_ARM64_M2)"
-	tar --sort=name --mtime="@$(SOURCE_DATE_EPOCH)" --owner=0 --group=0 --numeric-owner --create --gzip --file="./dist/$(PACKAGE_DARWIN_ARM64_M3).tar.gz" --directory=./target/package -- "$(PACKAGE_DARWIN_ARM64_M3)"
-	tar --sort=name --mtime="@$(SOURCE_DATE_EPOCH)" --owner=0 --group=0 --numeric-owner --create --gzip --file="./dist/$(PACKAGE_DARWIN_ARM64_M4).tar.gz" --directory=./target/package -- "$(PACKAGE_DARWIN_ARM64_M4)"
-	tar --sort=name --mtime="@$(SOURCE_DATE_EPOCH)" --owner=0 --group=0 --numeric-owner --create --gzip --file="./dist/$(PACKAGE_DARWIN_ARM64_M5).tar.gz" --directory=./target/package -- "$(PACKAGE_DARWIN_ARM64_M5)"
-	cd ./dist && sha256sum -- "$(PACKAGE_DARWIN_AMD64_V1).tar.gz" "$(PACKAGE_DARWIN_AMD64_V2).tar.gz" "$(PACKAGE_DARWIN_AMD64_V3).tar.gz" "$(PACKAGE_DARWIN_ARM64_V8).tar.gz" "$(PACKAGE_DARWIN_ARM64_M1).tar.gz" "$(PACKAGE_DARWIN_ARM64_M2).tar.gz" "$(PACKAGE_DARWIN_ARM64_M3).tar.gz" "$(PACKAGE_DARWIN_ARM64_M4).tar.gz" "$(PACKAGE_DARWIN_ARM64_M5).tar.gz" > ./SHA256SUMS
+.PHONY: dist
+dist: dist_debug dist_release dist_native
+	cd ./dist && sha256sum -- "$(PACKAGE_DEBUG).tar.gz" "$(PACKAGE_RELEASE).tar.gz" "$(PACKAGE_NATIVE).tar.gz" > ./SHA256SUMS
 
 .PHONY: cargo_clean
 cargo_clean:
 	cargo clean
-	rm --force --recursive --one-file-system -- ./dist
+	rm --force --recursive --one-file-system -- ./dist "$(DEVCONTAINER_TMPDIR)"
 
 .PHONY: git_check
 git_check:
@@ -461,7 +319,7 @@ git_check:
 	git fsck --full --strict --no-dangling --no-progress
 
 .PHONY: devcontainer_check
-devcontainer_check:
+devcontainer_check: host_gate
 	devcontainer read-configuration --workspace-folder . >/dev/null
 	docker compose -f "$(DEVCONTAINER_COMPOSE)" config --quiet
 	docker build --check --file ./.devcontainer/Dockerfile ./.devcontainer

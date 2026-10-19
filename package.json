@@ -15,7 +15,7 @@
             "url": "https://github.com/tomaschochola"
         }
     ],
-    "description": "Production-oriented Rust project template for AMD64 and ARM64 GNU/Linux and macOS development.",
+    "description": "Production-oriented Rust project template for AMD64 and ARM64 GNU/Linux development.",
     "devDependencies": {
         "@tomaschochola/tooling-prettier": "git+https://github.com/tomaschochola/tooling-prettier.git#main",
         "@tomaschochola/tooling-trimmer": "git+https://github.com/tomaschochola/tooling-trimmer.git#main"
@@ -31,12 +31,9 @@
         "Tomas Chochola",
         "Tomáš Chochola",
         "amd64",
-        "apple-silicon",
         "arm64",
-        "darwin",
         "gnu-linux",
         "linux",
-        "macos",
         "rust",
         "template-rust-project",
         "x86-64"
