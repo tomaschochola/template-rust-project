@@ -30,13 +30,7 @@
         "TomasChochola",
         "Tomas Chochola",
         "Tomáš Chochola",
-        "amd64",
-        "arm64",
-        "gnu-linux",
-        "linux",
-        "rust",
-        "template-rust-project",
-        "x86-64"
+        "template-rust-project"
     ],
     "license": "CC-BY-ND-4.0",
     "name": "@tomaschochola/template-rust-project",

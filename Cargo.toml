@@ -3,6 +3,7 @@ name = "template-rust-project"
 version = "0.0.0"
 edition = "2024"
 rust-version = "1.99.1"
+description = "Production-oriented Rust project template for AMD64 and ARM64 GNU/Linux development."
 license = "CC-BY-ND-4.0"
 publish = false
 
