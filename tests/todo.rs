@@ -1,4 +1,4 @@
-//! Unit tests.
+//! Integration tests for the template application's exit code.
 
 use template_rust_project::todo;
 
