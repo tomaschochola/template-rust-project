@@ -1,6 +1,5 @@
 # Makefile
-
-SHELL := /usr/bin/env bash
+SHELL := bash
 
 GNUMAKEFLAGS ?=
 
@@ -14,166 +13,194 @@ MAKEFLAGS += --no-builtin-variables
 .SUFFIXES:
 .NOTPARALLEL:
 
-# Default goal
-
+# Default
 .DEFAULT_GOAL := never
 
 .PHONY: never
 .SILENT: never
 never:
-	printf '%s\n' 'No default target. Run an explicit target' >&2
+	printf '%s\n' 'No default target. Specify a target explicitly.' >&2
 	exit 1
 
-# Options
+# Variables
+CARGO_TERM_COLOR := never
+COMPOSE_PROJECT_NAME := $(shell printf 'dc-%s-%s' "$$(basename -- "$$(pwd -P)" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr -cs 'a-z0-9' '-' | sed -e 's/^-*//' -e 's/-*$$//' -e 's/^$$/workspace/' | cut -c 1-32 | sed 's/-*$$//')" "$$(printf '%s' "$$(pwd -P)" | sha256sum | cut -c 1-16)")
+LC_ALL := C.UTF-8
+SOURCE_DATE_EPOCH := $(shell git log -1 --format=%ct 2>/dev/null || echo 0)
+VERSION := $(shell v=$$(git describe --tags --abbrev=0 2>/dev/null || echo 0.0.0); v=$${v#v}; echo "$$v")
 
-COMPOSE_PROJECT_NAME ?= template-rust-project-$(shell pwd -P | sha256sum | cut -c1-16)
-RUSTFLAGS ?=
-RUSTDOCFLAGS ?=
-DESTDIR ?=
-VERSION ?= $(shell v=$$(git describe --tags --abbrev=0 2>/dev/null || echo 0.0.0); v=$${v#v}; echo "$$v")
-SOURCE_DATE_EPOCH ?= $(shell git log -1 --format=%ct 2>/dev/null || echo 0)
-prefix ?= /usr/local
-exec_prefix ?= $(prefix)
 bindir ?= $(exec_prefix)/bin
+DESTDIR ?=
+exec_prefix ?= $(prefix)
+prefix ?= /usr/local
 SUDO ?= sudo
 
-DEVCONTAINER_COMPOSE := ./.devcontainer/docker-compose.yml
-DEVCONTAINER_TMPDIR := $(CURDIR)/.devcontainer/.tmp
-LC_ALL := C.UTF-8
-PROGRAM := template-rust-project
-CARGO_TERM_COLOR := never
-PACKAGE_DEBUG := $(PROGRAM)-$(VERSION)-debug
-PACKAGE_RELEASE := $(PROGRAM)-$(VERSION)-release
-PACKAGE_NATIVE := $(PROGRAM)-$(VERSION)-native
-
-export LC_ALL
-export VERSION
-export SOURCE_DATE_EPOCH
 export CARGO_TERM_COLOR
 export COMPOSE_PROJECT_NAME
+export LC_ALL
+export SOURCE_DATE_EPOCH
+export VERSION
 
-# Public goals
-
-.PHONY: fix
-fix: cargo_fix clippy_fix rustfmt_fix prettier_fix trimmer_fix
-
-.PHONY: check
-check: devcontainer_gate doctor lint analyze test audit
-
-.PHONY: doctor
-doctor: git_check npm_config_check npm_doctor npm_check toolchain_check
-
-.PHONY: lint
-lint: rustfmt_check prettier_check trimmer_check
+# Phony
+.PHONY: all
+all: debug release
 
 .PHONY: analyze
 analyze: npm_check clippy_check rustdoc_check
 
-.PHONY: test
-test: devcontainer_gate cargo_test
+.PHONY: asan
+asan: ./.cargo/config.toml ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
+	cargo test --locked --all-targets --target x86_64-unknown-linux-gnuasan
+	cargo test --locked --doc --target x86_64-unknown-linux-gnuasan
+	cargo test --locked --all-targets --all-features --target x86_64-unknown-linux-gnuasan
+	cargo test --locked --doc --all-features --target x86_64-unknown-linux-gnuasan
 
 .PHONY: audit
 audit: npm_audit
 
-.PHONY: update
-update: npm_config_check npm_update cargo_update
+.PHONY: cargo_clean
+cargo_clean:
+	cargo clean
+
+.PHONY: cargo_fetch
+cargo_fetch: ./.cargo/config.toml ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
+	cargo fetch --locked
+
+.PHONY: cargo_fix
+cargo_fix: ./.cargo/config.toml ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
+	cargo fix --locked --all-targets --allow-dirty
+	cargo fix --locked --all-targets --all-features --allow-dirty
+
+.PHONY: cargo_test
+cargo_test: ./.cargo/config.toml ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
+	cargo test --locked --all-targets
+	cargo test --locked --doc
+	cargo test --locked --all-targets --all-features
+	cargo test --locked --doc --all-features
+
+.PHONY: cargo_update
+cargo_update: ./.cargo/config.toml ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
+	cargo update
+
+.PHONY: check
+check: doctor lint analyze test audit
 
 .PHONY: clean
 clean: cargo_clean
+	rm --force --recursive --one-file-system -- ./dist ./temp ./temporary ./tmp ./.temp ./.temporary ./.tmp
+
+.PHONY: clippy_check
+clippy_check: ./.cargo/config.toml ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
+	cargo clippy --locked --all-targets
+	cargo clippy --locked --all-targets --all-features
+
+.PHONY: clippy_fix
+clippy_fix: ./.cargo/config.toml ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
+	cargo clippy --fix --locked --all-targets --allow-dirty
+	cargo clippy --fix --locked --all-targets --all-features --allow-dirty
+
+.PHONY: debug
+debug: ./.cargo/config.toml ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
+	cargo build --locked
+
+.PHONY: deps_clean
+deps_clean: npm_clean
+
+.PHONY: deps_install
+deps_install: npm_install cargo_fetch
+
+.PHONY: devcontainer_check
+devcontainer_check:
+	devcontainer read-configuration --workspace-folder . >/dev/null
+	docker compose -f "./.devcontainer/docker-compose.yml" config --quiet
+	docker build --check --file ./.devcontainer/Dockerfile ./.devcontainer
+
+.PHONY: dirclean
+dirclean:
+	fd --hidden --exclude .git --type directory --print0 | sort --zero-terminated --reverse | xargs --null --no-run-if-empty rmdir --ignore-fail-on-non-empty --
+
+.PHONY: dist
+dist: dist_debug dist_release
+
+.PHONY: dist_debug
+dist_debug: debug
+	rm --force --recursive --one-file-system -- "./target/package/template-rust-project-$(VERSION)-debug"
+	install --directory --mode=0755 -- "./target/package/template-rust-project-$(VERSION)-debug" "./target/package/template-rust-project-$(VERSION)-debug/bin" ./dist
+	install --mode=0755 -- ./target/debug/template-rust-project "./target/package/template-rust-project-$(VERSION)-debug/bin/template-rust-project"
+	install --mode=0644 -- ./LICENSE "./target/package/template-rust-project-$(VERSION)-debug/LICENSE"
+	bsdtar --create --auto-compress --mtime="@$(SOURCE_DATE_EPOCH)" --uid=0 --gid=0 --numeric-owner --no-acls --no-xattrs --no-fflags --options='gzip:!timestamp' --file="./dist/template-rust-project-$(VERSION)-debug.tar.gz" --directory=./target/package --no-recursion -- "template-rust-project-$(VERSION)-debug" "template-rust-project-$(VERSION)-debug/LICENSE" "template-rust-project-$(VERSION)-debug/bin" "template-rust-project-$(VERSION)-debug/bin/template-rust-project"
+	cd ./dist && sha256sum -- "template-rust-project-$(VERSION)-debug.tar.gz" > "template-rust-project-$(VERSION)-debug.tar.gz.sha256"
+
+.PHONY: dist_release
+dist_release: release
+	rm --force --recursive --one-file-system -- "./target/package/template-rust-project-$(VERSION)-release"
+	install --directory --mode=0755 -- "./target/package/template-rust-project-$(VERSION)-release" "./target/package/template-rust-project-$(VERSION)-release/bin" ./dist
+	install --mode=0755 -- ./target/release/template-rust-project "./target/package/template-rust-project-$(VERSION)-release/bin/template-rust-project"
+	install --mode=0644 -- ./LICENSE "./target/package/template-rust-project-$(VERSION)-release/LICENSE"
+	bsdtar --create --auto-compress --mtime="@$(SOURCE_DATE_EPOCH)" --uid=0 --gid=0 --numeric-owner --no-acls --no-xattrs --no-fflags --options='gzip:!timestamp' --file="./dist/template-rust-project-$(VERSION)-release.tar.gz" --directory=./target/package --no-recursion -- "template-rust-project-$(VERSION)-release" "template-rust-project-$(VERSION)-release/LICENSE" "template-rust-project-$(VERSION)-release/bin" "template-rust-project-$(VERSION)-release/bin/template-rust-project"
+	cd ./dist && sha256sum -- "template-rust-project-$(VERSION)-release.tar.gz" > "template-rust-project-$(VERSION)-release.tar.gz.sha256"
 
 .PHONY: distclean
 distclean: clean deps_clean
 
-.PHONY: all
-all: debug release native
+.PHONY: doctor
+doctor: git_check npm_config_check npm_doctor npm_check toolchain_check
+
+.PHONY: down
+down:
+	docker compose -f "./.devcontainer/docker-compose.yml" down --remove-orphans
+
+.PHONY: fix
+fix: cargo_fix clippy_fix rustfmt_fix prettier_fix trimmer_fix
+
+.PHONY: git_check
+git_check:
+	test -z "$$(git ls-files --unmerged)"
+	test -z "$$(git ls-files --cached --ignored --exclude-standard)"
+	git diff --check
+	git diff --cached --check
+	git fsck --full --strict --no-dangling --no-progress
+
+.PHONY: install
+install: release installdirs
+	$(SUDO) install --mode=0755 -- ./target/release/template-rust-project "$(DESTDIR)$(bindir)/template-rust-project"
+
+.PHONY: installcheck
+installcheck:
+	test -f "$(DESTDIR)$(bindir)/template-rust-project"
+	test -x "$(DESTDIR)$(bindir)/template-rust-project"
 
 .PHONY: installdirs
 installdirs:
 	$(SUDO) install --directory --mode=0755 -- "$(DESTDIR)$(bindir)"
-
-.PHONY: install
-install: native installdirs
-	$(SUDO) install --mode=0755 -- ./target/native/release/$(PROGRAM) "$(DESTDIR)$(bindir)/$(PROGRAM)"
-
-.PHONY: uninstall
-uninstall:
-	$(SUDO) rm --force -- "$(DESTDIR)$(bindir)/$(PROGRAM)"
-
-.PHONY: installcheck
-installcheck:
-	test -f "$(DESTDIR)$(bindir)/$(PROGRAM)"
-	test -x "$(DESTDIR)$(bindir)/$(PROGRAM)"
-
-.PHONY: postcreate
-postcreate: deps_install toolchain_check
-
-.PHONY: up
-up: host_gate devcontainer_check
-	mkdir --parents -- "$(DEVCONTAINER_TMPDIR)"
-	env TMPDIR="$(DEVCONTAINER_TMPDIR)" devcontainer up --workspace-folder .
-
-.PHONY: shell
-shell: interactive_gate host_gate up
-	devcontainer exec --workspace-folder . /bin/bash
-
-.PHONY: stop
-stop: host_gate
-	docker compose -f "$(DEVCONTAINER_COMPOSE)" stop
-
-.PHONY: down
-down: host_gate
-	docker compose -f "$(DEVCONTAINER_COMPOSE)" down --remove-orphans
-
-.PHONY: rebuild
-rebuild: host_gate devcontainer_check down
-	mkdir --parents -- "$(DEVCONTAINER_TMPDIR)"
-	env TMPDIR="$(DEVCONTAINER_TMPDIR)" devcontainer up --workspace-folder . --build-no-cache
-
-.PHONY: nuke
-nuke: distclean prune
-
-.PHONY: prune
-prune: host_gate
-	docker compose -f "$(DEVCONTAINER_COMPOSE)" down --volumes --rmi local --remove-orphans
-
-# Protected goals
-
-.PHONY: host_gate
-.SILENT: host_gate
-host_gate:
-	if test -e /.dockerenv; then printf '%s\n' 'host_gate: host only' >&2; exit 1; fi
-
-.PHONY: devcontainer_gate
-.SILENT: devcontainer_gate
-devcontainer_gate:
-	if test ! -e /.dockerenv; then printf '%s\n' 'devcontainer_gate: devcontainer only' >&2; exit 1; fi
 
 .PHONY: interactive_gate
 .SILENT: interactive_gate
 interactive_gate:
 	if test ! -t 0 || test ! -t 1; then printf '%s\n' 'interactive_gate: interactive only' >&2; exit 1; fi
 
-.PHONY: deps_install
-deps_install: npm_install cargo_fetch
+.PHONY: lint
+lint: rustfmt_check prettier_check trimmer_check
 
-.PHONY: deps_clean
-deps_clean: npm_clean
+.PHONY: msan
+msan: ./.cargo/config.toml ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
+	cargo test --locked --all-targets --target x86_64-unknown-linux-gnumsan
+	cargo test --locked --doc --target x86_64-unknown-linux-gnumsan
+	cargo test --locked --all-targets --all-features --target x86_64-unknown-linux-gnumsan
+	cargo test --locked --doc --all-features --target x86_64-unknown-linux-gnumsan
 
-.PHONY: trimmer_fix
-trimmer_fix: ./node_modules/.package-lock.json ./package.json ./package-lock.json
-	npm exec --no --ignore-scripts -- tooling-trimmer fix .
+.PHONY: npm_audit
+npm_audit: npm_config_check ./node_modules/.package-lock.json ./package.json ./package-lock.json
+	npm audit --ignore-scripts --audit-level=critical --install-links --include=prod --include=dev --include=peer --include=optional
 
-.PHONY: trimmer_check
-trimmer_check: ./node_modules/.package-lock.json ./package.json ./package-lock.json
-	npm exec --no --ignore-scripts -- tooling-trimmer check .
+.PHONY: npm_check
+npm_check: npm_config_check ./node_modules/.package-lock.json
+	npm ci --dry-run --ignore-scripts --audit=false --install-links --include=prod --include=dev --include=peer --include=optional
+	npm ls --all --install-links --include=prod --include=dev --include=peer --include=optional >/dev/null
 
-.PHONY: prettier_fix
-prettier_fix: ./node_modules/.package-lock.json ./package.json ./package-lock.json ./prettier.config.js
-	npm exec --no --ignore-scripts -- prettier -w .
-
-.PHONY: prettier_check
-prettier_check: ./node_modules/.package-lock.json ./package.json ./package-lock.json ./prettier.config.js
-	npm exec --no --ignore-scripts -- prettier -c .
+.PHONY: npm_clean
+npm_clean:
+	rm --force --recursive --one-file-system -- ./node_modules
 
 .PHONY: npm_config_check
 npm_config_check: ./.npmrc
@@ -190,15 +217,6 @@ npm_config_check: ./.npmrc
 npm_doctor:
 	npm doctor connection registry environment permissions cache
 
-.PHONY: npm_check
-npm_check: npm_config_check ./node_modules/.package-lock.json
-	npm ci --dry-run --ignore-scripts --audit=false --install-links --include=prod --include=dev --include=peer --include=optional
-	npm ls --all --install-links --include=prod --include=dev --include=peer --include=optional >/dev/null
-
-.PHONY: npm_audit
-npm_audit: npm_config_check ./node_modules/.package-lock.json ./package.json ./package-lock.json
-	npm audit --ignore-scripts --audit-level=critical --install-links --include=prod --include=dev --include=peer --include=optional
-
 .PHONY: npm_install
 npm_install: npm_config_check ./package.json ./package-lock.json
 	npm ci --ignore-scripts --install-links --include=prod --include=dev --include=peer --include=optional
@@ -207,9 +225,65 @@ npm_install: npm_config_check ./package.json ./package-lock.json
 npm_update: npm_config_check ./package.json ./package-lock.json npm_clean
 	npm update --ignore-scripts --install-links --include=prod --include=dev --include=peer --include=optional
 
-.PHONY: npm_clean
-npm_clean:
-	rm --force --recursive --one-file-system -- ./node_modules
+.PHONY: nuke
+nuke: distclean prune xfd dirclean
+
+.PHONY: port ports url urls
+.SILENT: port ports url urls
+port ports url urls:
+	printf 'Project: %s\n' "$$COMPOSE_PROJECT_NAME"
+	printf '%-20s %-12s %s\n' 'SERVICE' 'PORT' 'URL'
+	docker compose -f "./.devcontainer/docker-compose.yml" ps --format '{{$$service := .Service}}{{range .Publishers}}{{if .PublishedPort}}{{printf "%-20s %-12s http://%s:%d" $$service (printf "%d/%s" .TargetPort .Protocol) .URL .PublishedPort}}{{println}}{{end}}{{end}}' | sed '/^$$/d' | sort
+
+.PHONY: postcreate
+postcreate: deps_install toolchain_check
+
+.PHONY: prettier_check
+prettier_check: ./node_modules/.package-lock.json ./package.json ./package-lock.json ./prettier.config.js
+	npm exec --no --ignore-scripts -- prettier -c .
+
+.PHONY: prettier_fix
+prettier_fix: ./node_modules/.package-lock.json ./package.json ./package-lock.json ./prettier.config.js
+	npm exec --no --ignore-scripts -- prettier -w .
+
+.PHONY: prune
+prune:
+	docker compose -f "./.devcontainer/docker-compose.yml" down --volumes --rmi local --remove-orphans
+
+.PHONY: rebuild
+rebuild: devcontainer_check down | $(CURDIR)/.tmp
+	TMPDIR="$(CURDIR)/.tmp" devcontainer up --workspace-folder . --build-no-cache
+
+.PHONY: release
+release: ./.cargo/config.toml ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
+	cargo build --locked --release
+
+.PHONY: rustdoc_check
+rustdoc_check: ./.cargo/config.toml ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
+	cargo doc --locked --no-deps --document-private-items
+	cargo doc --locked --all-features --no-deps --document-private-items
+
+.PHONY: rustfmt_check
+rustfmt_check: ./.cargo/config.toml ./Cargo.toml ./rust-toolchain.toml ./rustfmt.toml
+	cargo fmt --all --check
+
+.PHONY: rustfmt_fix
+rustfmt_fix: ./.cargo/config.toml ./Cargo.toml ./rust-toolchain.toml ./rustfmt.toml
+	cargo fmt --all
+
+.PHONY: sanitize
+sanitize: asan msan tsan
+
+.PHONY: shell
+shell: interactive_gate up
+	devcontainer exec --workspace-folder . /bin/bash
+
+.PHONY: stop
+stop:
+	docker compose -f "./.devcontainer/docker-compose.yml" stop
+
+.PHONY: test
+test: cargo_test
 
 .PHONY: toolchain_check
 toolchain_check: ./rust-toolchain.toml
@@ -217,114 +291,39 @@ toolchain_check: ./rust-toolchain.toml
 	rustc --version
 	cargo --version
 
-.PHONY: cargo_fetch
-cargo_fetch: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	cargo fetch --locked
+.PHONY: trimmer_check
+trimmer_check: ./node_modules/.package-lock.json ./package.json ./package-lock.json
+	npm exec --no --ignore-scripts -- tooling-trimmer check .
 
-.PHONY: cargo_update
-cargo_update: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	cargo update
-
-.PHONY: cargo_fix
-cargo_fix: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	cargo fix --locked --all-features --allow-dirty --allow-staged
-
-.PHONY: clippy_fix
-clippy_fix: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	cargo clippy --fix --locked --all-features --allow-dirty --allow-staged -- -D warnings
-
-.PHONY: rustfmt_fix
-rustfmt_fix: ./Cargo.toml ./rust-toolchain.toml ./rustfmt.toml
-	cargo fmt --all
-
-.PHONY: rustfmt_check
-rustfmt_check: ./Cargo.toml ./rust-toolchain.toml ./rustfmt.toml
-	cargo fmt --all -- --check
-
-.PHONY: clippy_check
-clippy_check: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	cargo clippy --locked --all-targets --all-features -- -D warnings
-
-.PHONY: rustdoc_check
-rustdoc_check: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	RUSTDOCFLAGS='$(strip $(RUSTDOCFLAGS) -D warnings)' cargo doc --locked --all-features --no-deps --document-private-items
-
-.PHONY: cargo_test
-cargo_test: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	cargo test --locked --all-features
-
-.PHONY: asan
-asan: devcontainer_gate ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	cargo test --locked --all-features --target x86_64-unknown-linux-gnuasan
-
-.PHONY: msan
-msan: devcontainer_gate ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	cargo test --locked --all-features --target x86_64-unknown-linux-gnumsan
+.PHONY: trimmer_fix
+trimmer_fix: ./node_modules/.package-lock.json ./package.json ./package-lock.json
+	npm exec --no --ignore-scripts -- tooling-trimmer fix .
 
 .PHONY: tsan
-tsan: devcontainer_gate ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	cargo test --locked --all-features --target x86_64-unknown-linux-gnutsan
+tsan: ./.cargo/config.toml ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
+	cargo test --locked --all-targets --target x86_64-unknown-linux-gnutsan
+	cargo test --locked --doc --target x86_64-unknown-linux-gnutsan
+	cargo test --locked --all-targets --all-features --target x86_64-unknown-linux-gnutsan
+	cargo test --locked --doc --all-features --target x86_64-unknown-linux-gnutsan
 
-.PHONY: sanitize
-sanitize: asan msan tsan
+.PHONY: uninstall
+uninstall:
+	$(SUDO) rm --force -- "$(DESTDIR)$(bindir)/template-rust-project"
 
-.PHONY: debug
-debug: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	cargo build --locked --all-features
+.PHONY: up
+up: devcontainer_check | $(CURDIR)/.tmp
+	TMPDIR="$(CURDIR)/.tmp" devcontainer up --workspace-folder .
 
-.PHONY: release
-release: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	cargo build --locked --release --all-features
+.PHONY: update
+update: npm_config_check npm_update cargo_update
 
-.PHONY: native
-native: ./Cargo.toml ./Cargo.lock ./rust-toolchain.toml
-	RUSTFLAGS='$(strip $(RUSTFLAGS) -C target-cpu=native)' cargo build --locked --release --all-features --target-dir ./target/native
+.PHONY: xfd
+xfd:
+	git clean -Xfd
 
-.PHONY: dist_debug
-dist_debug: debug
-	install --directory --mode=0755 -- "./target/package/$(PACKAGE_DEBUG)" "./target/package/$(PACKAGE_DEBUG)/bin" ./dist
-	install --mode=0755 -- ./target/debug/$(PROGRAM) "./target/package/$(PACKAGE_DEBUG)/bin/$(PROGRAM)"
-	install --mode=0644 -- ./LICENSE "./target/package/$(PACKAGE_DEBUG)/LICENSE"
-	tar --sort=name --mtime="@$(SOURCE_DATE_EPOCH)" --owner=0 --group=0 --numeric-owner --create --gzip --file="./dist/$(PACKAGE_DEBUG).tar.gz" --directory=./target/package -- "$(PACKAGE_DEBUG)"
-
-.PHONY: dist_release
-dist_release: release
-	install --directory --mode=0755 -- "./target/package/$(PACKAGE_RELEASE)" "./target/package/$(PACKAGE_RELEASE)/bin" ./dist
-	install --mode=0755 -- ./target/release/$(PROGRAM) "./target/package/$(PACKAGE_RELEASE)/bin/$(PROGRAM)"
-	install --mode=0644 -- ./LICENSE "./target/package/$(PACKAGE_RELEASE)/LICENSE"
-	tar --sort=name --mtime="@$(SOURCE_DATE_EPOCH)" --owner=0 --group=0 --numeric-owner --create --gzip --file="./dist/$(PACKAGE_RELEASE).tar.gz" --directory=./target/package -- "$(PACKAGE_RELEASE)"
-
-.PHONY: dist_native
-dist_native: native
-	install --directory --mode=0755 -- "./target/package/$(PACKAGE_NATIVE)" "./target/package/$(PACKAGE_NATIVE)/bin" ./dist
-	install --mode=0755 -- ./target/native/release/$(PROGRAM) "./target/package/$(PACKAGE_NATIVE)/bin/$(PROGRAM)"
-	install --mode=0644 -- ./LICENSE "./target/package/$(PACKAGE_NATIVE)/LICENSE"
-	tar --sort=name --mtime="@$(SOURCE_DATE_EPOCH)" --owner=0 --group=0 --numeric-owner --create --gzip --file="./dist/$(PACKAGE_NATIVE).tar.gz" --directory=./target/package -- "$(PACKAGE_NATIVE)"
-
-.PHONY: dist
-dist: dist_debug dist_release dist_native
-	cd ./dist && sha256sum -- "$(PACKAGE_DEBUG).tar.gz" "$(PACKAGE_RELEASE).tar.gz" "$(PACKAGE_NATIVE).tar.gz" > ./SHA256SUMS
-
-.PHONY: cargo_clean
-cargo_clean:
-	cargo clean
-	rm --force --recursive --one-file-system -- ./dist "$(DEVCONTAINER_TMPDIR)"
-
-.PHONY: git_check
-git_check:
-	test -z "$$(git ls-files --unmerged)"
-	test -z "$$(git ls-files --cached --ignored --exclude-standard)"
-	git diff --check
-	git diff --cached --check
-	git fsck --full --strict --no-dangling --no-progress
-
-.PHONY: devcontainer_check
-devcontainer_check: host_gate
-	devcontainer read-configuration --workspace-folder . >/dev/null
-	docker compose -f "$(DEVCONTAINER_COMPOSE)" config --quiet
-	docker build --check --file ./.devcontainer/Dockerfile ./.devcontainer
-
-# Private targets
+# Non-phony
+$(CURDIR)/.tmp:
+	mkdir --parents -- "$@"
 
 ./node_modules/.package-lock.json: ./.npmrc ./package.json ./package-lock.json
 	$(MAKE) npm_install

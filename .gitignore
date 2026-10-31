@@ -6,8 +6,22 @@
 .zed
 .antigravitycli
 
-# devcontainer
-/.devcontainer/.tmp
+# temporary
+/temp/
+/temporary/
+/tmp/
+/.temp/
+/.temporary/
+/.tmp/
+
+# agent
+/PLAN.md
+/NOTES.md
+/ARCHITECTURE.md
+
+# environment
+/.env
+/.secrets
 
 # node
 /node_modules
@@ -15,9 +29,5 @@
 # rust
 /target
 
-# generated artifacts
+# artifacts
 /dist
-
-# environment files and secrets
-/.env
-/.secrets
