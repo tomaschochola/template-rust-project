@@ -42,7 +42,7 @@ ENV PATH=/usr/local/cargo/bin:${PATH}
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes --no-install-recommends \
-    && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends ca-certificates fd-find gcc git libarchive-tools libatomic1 libc6-dev make openssh-client sudo \
+    && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends ca-certificates fd-find gcc git libarchive-tools libatomic1 libc6-dev make openssh-client shellcheck sudo \
     && tar --extract --gzip --file /tmp/node.tgz --directory /usr/local --strip-components=1 --no-same-owner --exclude='*/README.md' --exclude='*/CHANGELOG.md' --exclude='*/LICENSE' \
     && ln --symbolic /usr/bin/fdfind /usr/local/bin/fd \
     && ln --symbolic /usr/local/bin/node /usr/local/bin/nodejs \
